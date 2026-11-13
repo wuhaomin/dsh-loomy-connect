@@ -1,7 +1,7 @@
 {
   "name": "dsh-loomy-connect",
   "displayName": "DSH Loomy Connect",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Use the models included with the Loomy desktop app in DeepSeek Harness with no configuration.",
   "type": "module",
   "main": "lib/index.js",
@@ -25,11 +25,11 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/gdrpzym/dsh-loomy-connect.git"
+    "url": "git+https://github.com/wuhaomin/dsh-loomy-connect.git"
   },
-  "homepage": "https://github.com/gdrpzym/dsh-loomy-connect#readme",
+  "homepage": "https://github.com/wuhaomin/dsh-loomy-connect#readme",
   "bugs": {
-    "url": "https://github.com/gdrpzym/dsh-loomy-connect/issues"
+    "url": "https://github.com/wuhaomin/dsh-loomy-connect/issues"
   },
   "keywords": [
     "dsh-plugin",
@@ -38,7 +38,8 @@
     "model-provider"
   ],
   "engines": {
-    "node": ">=22"
+    "node": ">=22",
+    "dsh": ">=0.1.5-rc.1 <0.3.0"
   },
   "scripts": {
     "build": "tsdown",
@@ -64,12 +65,12 @@
   },
   "peerDependencies": {
     "@deepseek-ai/cordis": "^4.0.2",
-    "@deepseek-ai/dsh-attachment": "^0.1.5-rc.1",
-    "@deepseek-ai/dsh-client-ui-primitives": "^0.1.5-rc.2",
-    "@deepseek-ai/dsh-host-webserver": "^0.1.5-rc.1",
-    "@deepseek-ai/dsh-llm": "^0.1.5-rc.1",
-    "@deepseek-ai/dsh-llm-pi-ai": "^0.1.5-rc.1",
-    "@deepseek-ai/dsh-settings": "^0.1.5-rc.1",
+    "@deepseek-ai/dsh-attachment": "^0.1.5-rc.1 || ^0.2.0-rc.1",
+    "@deepseek-ai/dsh-client-ui-primitives": "^0.1.5-rc.2 || ^0.2.0-rc.1",
+    "@deepseek-ai/dsh-host-webserver": "^0.1.5-rc.1 || ^0.2.0-rc.1",
+    "@deepseek-ai/dsh-llm": "^0.1.5-rc.1 || ^0.2.0-rc.1",
+    "@deepseek-ai/dsh-llm-pi-ai": "^0.1.5-rc.1 || ^0.2.0-rc.1",
+    "@deepseek-ai/dsh-settings": "^0.1.5-rc.1 || ^0.2.0-rc.1",
     "@deepseek-ai/schemastery": "^3.18.2",
     "@earendil-works/pi-ai": "^0.85.1",
     "react": "^18.2.0"
