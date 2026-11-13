@@ -1,5 +1,6 @@
 /** DSH provider registration for the models included in the Loomy desktop app. */
 import type { Context } from '@deepseek-ai/cordis'
+import { resolveImageAttachmentAccess } from '@deepseek-ai/dsh-llm'
 import Schema from '@deepseek-ai/schemastery'
 import type {} from '@deepseek-ai/dsh-host-webserver'
 import type {} from '@deepseek-ai/dsh-settings'
@@ -102,7 +103,19 @@ export function apply(ctx: Context, config: ConfigShape = {}): void {
   ctx.effect(() => () => { closed = true; void shim.close() })
   void shim.ready.then(async () => {
     if (closed) return
-    const loomy = createLoomyAdapter(catalog, shim)
+    const loomy = createLoomyAdapter(catalog, shim, {
+      // DSH 0.2.x asks the adapter for the deployment's durable attachment store
+      // on every request whose history carries an image; without these hooks
+      // such a conversation fails with UNSUPPORTED_CONTENT before it ever
+      // reaches the loopback gateway. `fs` maps the stored host path into the
+      // sandbox the model tools actually run in.
+      resolveAttachments: () => ctx.get('attachments'),
+      resolveImageAccess: (attachments, ref) => resolveImageAttachmentAccess(
+        attachments,
+        hostPath => ctx.get('fs')?.processPathFromHostPath(hostPath),
+        ref,
+      ),
+    })
     const releaseAdapter = ctx.llm.registerAdapter([LOOMY_PROVIDER], loomy.adapter)
     const releaseDirectory = ctx.llm.registerConfigurableProviders([{ provider: LOOMY_PROVIDER, displayName: 'Loomy', settingsNs: LOOMY_SETTINGS_NS, settingsPath: [], declared: false }])
     ctx.effect(() => () => { releaseAdapter(); releaseDirectory() })

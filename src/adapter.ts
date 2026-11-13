@@ -1,8 +1,9 @@
 import { createProvider } from '@earendil-works/pi-ai'
 import type { Api, AuthContext, CredentialStore, Model, ModelThinkingLevel, Provider, ThinkingLevelMap } from '@earendil-works/pi-ai'
 import { openAICompletionsApi } from '@earendil-works/pi-ai/api/openai-completions.lazy'
-import { resolveRetryPolicy } from '@deepseek-ai/dsh-llm'
+import { resolveRetryPolicy, type ImageAttachmentAccess } from '@deepseek-ai/dsh-llm'
 import { PiAiAdapter, type ResolvedPiAiProviderProfile } from '@deepseek-ai/dsh-llm-pi-ai'
+import type { AttachmentStore, ImageAttachmentRef } from '@deepseek-ai/dsh-attachment'
 import type { LoomyCatalog, LoomyModel } from './catalog.ts'
 import type { LoomyShim } from './shim.ts'
 
@@ -28,6 +29,21 @@ function modelFields(model: LoomyModel, baseUrl: string): Model<Api> {
   } as unknown as Model<Api>
 }
 
+/**
+ * Host services the adapter needs to carry images through pi-ai.
+ *
+ * DSH 0.2.x resolves the deployment's durable attachment store per request and
+ * rejects an image-bearing conversation without one (`UNSUPPORTED_CONTENT`), so
+ * the plugin has to forward these two hooks from its cordis context. Both stay
+ * optional: a profile with no attachment service simply cannot carry images.
+ */
+export interface LoomyAdapterHost {
+  /** The deployment's durable attachment store, resolved per request. */
+  resolveAttachments?: () => AttachmentStore | undefined
+  /** Bridge one stored attachment reference into the current execution world. */
+  resolveImageAccess?: (attachments: AttachmentStore, ref: ImageAttachmentRef) => ImageAttachmentAccess | undefined
+}
+
 /** What {@link createLoomyAdapter} hands back. */
 export interface LoomyAdapter {
   adapter: PiAiAdapter
@@ -35,7 +51,7 @@ export interface LoomyAdapter {
   invalidate(): void
 }
 
-export function createLoomyAdapter(catalog: LoomyCatalog, shim: LoomyShim): LoomyAdapter {
+export function createLoomyAdapter(catalog: LoomyCatalog, shim: LoomyShim, host: LoomyAdapterHost = {}): LoomyAdapter {
   const models = (): Model<Api>[] => catalog.current().map(model => modelFields(model, `${shim.baseUrl()}/v1`))
   const base = createProvider({
     id: LOOMY_PROVIDER, name: 'Loomy', models: models(), api: openAICompletionsApi(),
@@ -66,6 +82,14 @@ export function createLoomyAdapter(catalog: LoomyCatalog, shim: LoomyShim): Loom
     maxRequestImageBytes: 20_971_520, requestImagePixelBudget: 4_194_304, requestImageMaxBytes: 1_048_576, piProvider: provider,
   }
   let profiles = new Map([[LOOMY_PROVIDER, profile]])
-  const adapter = new PiAiAdapter({ profiles: () => profiles, auth: inertAuth, resolveApiKey: async () => shim.token() })
+  const adapter = new PiAiAdapter({
+    profiles: () => profiles,
+    auth: inertAuth,
+    resolveApiKey: async () => shim.token(),
+    // Forwarded only when the host actually offers them, so a profile without
+    // an attachment service keeps the old behaviour instead of failing hard.
+    ...(host.resolveAttachments === undefined ? {} : { resolveAttachments: host.resolveAttachments }),
+    ...(host.resolveImageAccess === undefined ? {} : { resolveImageAccess: host.resolveImageAccess }),
+  })
   return { adapter, invalidate() { profiles = new Map([[LOOMY_PROVIDER, profile]]) } }
 }

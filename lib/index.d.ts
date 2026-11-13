@@ -1,8 +1,9 @@
+import { ImageAttachmentAccess } from "@deepseek-ai/dsh-llm";
 import Schema from "@deepseek-ai/schemastery";
 import { PiAiAdapter } from "@deepseek-ai/dsh-llm-pi-ai";
 import { IncomingMessage, ServerResponse } from "node:http";
 import { Context } from "@deepseek-ai/cordis";
-//#region src/auth.d.ts
+import { AttachmentStore, ImageAttachmentRef } from "@deepseek-ai/dsh-attachment";
 /**
  * The `localStorage` key Loomy's renderer keeps the sign-in session under.
  *
@@ -32,8 +33,6 @@ declare function extractLoomyAuthSessions(text: string): LoomyCredential[];
 /** The newest session in Loomy's localStorage, or undefined when there is none. */
 declare function readLoomySessionFromStorage(dir?: string): Promise<LoomyCredential | undefined>;
 declare function readLoomyCredential(authFile?: string): Promise<LoomyCredential>;
-//#endregion
-//#region src/catalog.d.ts
 interface LoomyModel {
   id: string;
   name: string;
@@ -78,8 +77,6 @@ declare class LoomyCatalog {
   refreshFromApi(credential: LoomyCredential, signal?: AbortSignal): Promise<void>;
   refreshFromFile(configFile?: string): Promise<void>;
 }
-//#endregion
-//#region src/shim.d.ts
 interface LoomyShim {
   ready: Promise<void>;
   baseUrl(): string;
@@ -102,18 +99,28 @@ interface LoomyShimOptions {
 /** Resolve a possibly-dynamic auth-file location at call time. */
 declare function resolveAuthFile(value: LoomyAuthFile | undefined): string | undefined;
 declare function createLoomyShim(options: LoomyShimOptions): LoomyShim;
-//#endregion
-//#region src/adapter.d.ts
 declare const LOOMY_PROVIDER = "loomy";
+/**
+ * Host services the adapter needs to carry images through pi-ai.
+ *
+ * DSH 0.2.x resolves the deployment's durable attachment store per request and
+ * rejects an image-bearing conversation without one (`UNSUPPORTED_CONTENT`), so
+ * the plugin has to forward these two hooks from its cordis context. Both stay
+ * optional: a profile with no attachment service simply cannot carry images.
+ */
+interface LoomyAdapterHost {
+  /** The deployment's durable attachment store, resolved per request. */
+  resolveAttachments?: () => AttachmentStore | undefined;
+  /** Bridge one stored attachment reference into the current execution world. */
+  resolveImageAccess?: (attachments: AttachmentStore, ref: ImageAttachmentRef) => ImageAttachmentAccess | undefined;
+}
 /** What {@link createLoomyAdapter} hands back. */
 interface LoomyAdapter {
   adapter: PiAiAdapter;
   /** Rebuild the adapter's provider snapshot; call after a catalog update. */
   invalidate(): void;
 }
-declare function createLoomyAdapter(catalog: LoomyCatalog, shim: LoomyShim): LoomyAdapter;
-//#endregion
-//#region src/upstream.d.ts
+declare function createLoomyAdapter(catalog: LoomyCatalog, shim: LoomyShim, host?: LoomyAdapterHost): LoomyAdapter;
 declare const LOOMY_API_BASE = "https://loomyad.xunfei.cn/api/v1";
 declare class LoomyUpstreamClient {
   /**
@@ -128,8 +135,6 @@ declare class LoomyUpstreamClient {
 }
 /** Preserve tool calls; add the options Loomy sends for agent conversations. */
 declare function prepareLoomyBody(source: string): string;
-//#endregion
-//#region src/loopback.d.ts
 /**
  * Shared loopback gates for the plugin's local HTTP surfaces: the credential
  * shim and the same-origin web-status route. Both are only ever meant to be
@@ -148,8 +153,6 @@ declare function loopbackHost(value: string | undefined): boolean;
  * client pi-ai drives) send no `Origin` at all and pass.
  */
 declare function loopbackOrigin(value: string | undefined): boolean;
-//#endregion
-//#region src/points.d.ts
 /**
  * Read Loomy's own points summary straight off disk.
  *
@@ -199,8 +202,6 @@ declare function newestLoomyPoints(records: readonly LoomyPointsSummary[]): Loom
 declare function readLoomyPoints(dir?: string): Promise<LoomyPointsSummary | undefined>;
 /** Drop the memoized read; tests and the status route use this. */
 declare function resetLoomyPointsCache(): void;
-//#endregion
-//#region src/status-paths.d.ts
 /** Node-free constants and types shared by the Host and browser halves. */
 /** Plugin-owned status endpoint consumed by its browser half. */
 declare const LOOMY_STATUS_PATH = "/plugins/dsh-loomy-connect/status";
@@ -248,8 +249,6 @@ type LoomyWebStatus = {
   status: 'error';
   message: string;
 };
-//#endregion
-//#region src/web-status.d.ts
 /** Constructor dependencies. */
 interface LoomyStatusRouteOptions {
   /** Current sign-in state; `undefined` means signed out. */
@@ -281,8 +280,6 @@ declare function loomyWebStatus(deps: LoomyStatusRouteOptions, force?: boolean):
 declare function loomyStatusHandler(deps: LoomyStatusRouteOptions): (req: IncomingMessage, res: ServerResponse) => Promise<void>;
 /** Mount the GET status route on an optional webServer context. */
 declare function registerLoomyStatusRoute(ctx: Context, deps: LoomyStatusRouteOptions): void;
-//#endregion
-//#region src/index.d.ts
 declare const name = "llm-loomy";
 declare const inject: string[];
 /**
@@ -291,13 +288,13 @@ declare const inject: string[];
  * straight through — `undefined` for an entry whose patch has no `config:`
  * block — and reading a field off that aborts the entire plugin tree at boot.
  */
-declare const Config: Schema<Schemastery.ObjectS<{
-  authFile: Schema<string, string>;
-  configFile: Schema<string, string>;
-}>, Schemastery.ObjectT<{
-  authFile: Schema<string, string>;
-  configFile: Schema<string, string>;
-}>>;
+declare const Config: Schema<Schemastery.ObjectS<NoInfer<{
+  authFile: Schema<string, string, "plain">;
+  configFile: Schema<string, string, "plain">;
+}>>, Schemastery.ObjectT<NoInfer<{
+  authFile: Schema<string, string, "plain">;
+  configFile: Schema<string, string, "plain">;
+}>>, "plain">;
 /** Config as seen inside {@link apply}. */
 interface ConfigShape {
   authFile?: string;
@@ -313,5 +310,4 @@ interface ConfigShape {
  */
 declare const LOOMY_SETTINGS_NS = "loomy";
 declare function apply(ctx: Context, config?: ConfigShape): void;
-//#endregion
 export { Config, ConfigShape, LOOMY_API_BASE, LOOMY_AUTH_SESSION_KEY, LOOMY_POINTS_KEY, LOOMY_PROVIDER, LOOMY_SETTINGS_NS, LOOMY_STATUS_PATH, type LoomyAdapter, type LoomyAuthFile, LoomyCatalog, type LoomyCredential, type LoomyModel, type LoomyPointsSummary, type LoomyShim, type LoomyShimOptions, type LoomyStatusRouteOptions, LoomyUpstreamClient, type LoomyWebPoints, type LoomyWebStatus, apply, createLoomyAdapter, createLoomyShim, defaultLoomyAuthPath, defaultLoomyConfigPath, defaultLoomyLocalStorageDir, extractLoomyAuthSessions, extractLoomyPoints, inject, loomyStatusHandler, loomyWebStatus, loopbackHost, loopbackOrigin, name, newestLoomyPoints, parseLoomyApiModels, parseLoomyAuth, parseLoomyModels, parseLoomyPointsRecord, prepareLoomyBody, readLoomyCredential, readLoomyPoints, readLoomySessionFromStorage, registerLoomyStatusRoute, resetLoomyPointsCache, resolveAuthFile };
